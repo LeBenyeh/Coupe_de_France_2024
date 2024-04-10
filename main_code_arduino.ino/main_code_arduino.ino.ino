@@ -1,7 +1,7 @@
 #include <AccelStepper.h> 
 #include <MultiStepper.h> 
 
-#include <AFMotor.h>
+#include "parser.hpp"
 
 #define X_STEP  A0
 #define X_DIR   A1
@@ -36,25 +36,69 @@ void setup()
     steppers.addStepper(stepper2);
     digitalWrite(X_EN, LOW);
     digitalWrite(Y_EN, LOW);
+    init_msg_handler();
    
 }
- 
+
+char output_buffer[128];
+
+void confirm(msg_buffer* msg)
+{
+  if((msg->val[l_to_id('N')]).has_value)
+  {
+    sprintf(output_buffer, "G100 N%d\r\n", msg->val[l_to_id('N')].i_val);
+    Serial.print(output_buffer);
+  }
+}
+
+
+int handle_message(msg_buffer* msg)
+{
+
+  if(msg == NULL || (msg->val[l_to_id('G')]).present == false){msg->state=BUFF_ERROR; return 2;}
+  int command = msg->val[l_to_id('G')].i_val;
+
+  switch(command)
+  {
+    case 0:
+    {
+      if((msg->val[l_to_id('X')]).has_value)
+      {
+        stepper1.setSpeed((msg->val[l_to_id('X')]).i_val);  
+      }
+      if((msg->val[l_to_id('Y')]).has_value)
+      {
+        stepper2.setSpeed((msg->val[l_to_id('Y')]).i_val);  
+      }
+      confirm(msg);
+      break;
+    }
+    default:
+    {
+      sprintf(output_buffer, "Unknown command G%d\r\n", command);
+      Serial.write(output_buffer, strlen(output_buffer)+1);
+      msg->state = BUFF_ERROR;
+      return 1;
+      break;
+    }
+  }
+  msg->state = EMPTY;
+  
+  return 0;
+}
  
 void loop()
 {
-
-
-
-  if (msg == 1) {
-    stepper1.moveTo(1000);
-    stepper1.runSpeedToPosition();
-    Serial.print("Je tourne");
-    msg = 0;
+  steppers.run();
+  parse_all();
+  
+  int pos;
+  msg_buffer * message = get_message(&pos);
+  while(message != NULL)
+  {
+    int ret_val = handle_message(message);
+    message = get_message(&pos);
   }
-
-  steppers.moveTo(1000);
-  steppers.runSpeedToPosition(); // Blocks until all are in position
-  delay(1000);
   
 }
 
